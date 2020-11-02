@@ -1,0 +1,55 @@
+{
+	"name": "ChronologicalInstanceView",
+
+	"namespace": "Stanford\\ChronologicalInstanceView",
+
+	"description": "This module displays repeating forms with action tags @INSTANCETABLE and @INSTANCETABLE_REF as children and parent records, respectively.  The table is displayed on the record home page in redcap.  If the form has a field tagged with @PRINCIPAL_DATE, this date will be used to sort the records.  If the form has one more more fields with action tag with @INSTANCESUMMARY, these fields will be used in the summary column of othe ",
+
+	"documentation": "README.md",
+
+	"authors": [
+		{
+			"name": "Eileen Loh",
+			"email": "eloh@stanfordhealthcare.org",
+			"institution": "Stanford Healthcare"
+		}
+	],
+
+	"permissions": [
+		"redcap_every_page_top"
+	],
+
+	"enable-every-page-hooks-on-system-pages": false,
+
+	"links": {
+		"project": [
+
+		],
+		"control-center": [
+
+		]
+	},
+
+	"no-auth-pages": [
+
+	],
+
+	"project-settings": [
+
+	],
+
+	"system-settings": [
+
+	],
+
+	"crons": [
+
+	],
+
+	"compatibility": {
+		"php-version-min": "",
+		"php-version-max": "",
+		"redcap-version-min": "",
+		"redcap-version-max": ""
+	}
+}
