@@ -1,6 +1,7 @@
 <?php
 namespace Stanford\ChronologicalInstanceView;
 
+require_once "emLoggerTrait.php";
 ini_set("memory_limit", "-1");
 ini_set('max_execution_time', 0);
 set_time_limit(0);
@@ -8,6 +9,7 @@ set_time_limit(0);
 use REDCap;
 
 class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule {
+    use emLoggerTrait;
   private $project;
   private $projectId;
   private $recordId;
@@ -267,7 +269,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
         }
       }
     }
-    emDebug('Table model: '. print_r($tableModel, true));
+    $this->emDebug('Table model: '. print_r($tableModel, true));
     return $tableModel;
 
   }
@@ -301,7 +303,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
 
       //loop through all the forms in the event
       foreach ($form as $formName => $formData) {
-        emDebug('Form data ' . $formName . ': ' . print_r($formData, true));
+          $this->emDebug('Form data ' . $formName . ': ' . print_r($formData, true));
 
         // loop through parent forms -- do we want to require an instance date for parent forms or not?
         if (!isset($tableModel[$formName]['parent_form'])) {

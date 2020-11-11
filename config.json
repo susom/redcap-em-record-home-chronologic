@@ -22,34 +22,28 @@
 	"enable-every-page-hooks-on-system-pages": false,
 
 	"links": {
-		"system-settings": [
-			{
-				"key": "enable-system-debug-logging",
-				"name": "<b>Enable Debug Logging (system-wide)</b><i>(optional)</i> Requires installation and configuration of emLogger",
-				"required": false,
-				"type": "checkbox"
-			}
-		],
-		"project": [
-			{
-				"key": "enable-project-debug-logging",
-				"name": "<b>Enable Debug Logging</b><br><i>(optional)</i> Requires installation and configuration of emLogger",
-				"required": false,
-				"type": "checkbox"
-			}
-		]
+
 	},
 
 	"no-auth-pages": [
 
 	],
 
-	"project-settings": [
-
-	],
-
 	"system-settings": [
-
+		{
+			"key": "enable-system-debug-logging",
+			"name": "<b>Enable Debug Logging (system-wide)</b><i>(optional)</i> Requires installation and configuration of emLogger",
+			"required": false,
+			"type": "checkbox"
+		}
+	],
+	"project-settings": [
+		{
+			"key": "enable-project-debug-logging",
+			"name": "<b>Enable Debug Logging</b><br><i>(optional)</i> Requires installation and configuration of emLogger",
+			"required": false,
+			"type": "checkbox"
+		}
 	],
 
 	"crons": [
