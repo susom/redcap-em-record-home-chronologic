@@ -267,7 +267,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
         }
       }
     }
-    //print_dump($tableModel);
+    emDebug('Table model: '. print_r($tableModel, true));
     return $tableModel;
 
   }
@@ -301,7 +301,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
 
       //loop through all the forms in the event
       foreach ($form as $formName => $formData) {
-        //print_dump($formData);
+        emDebug('Form data ' . $formName . ': ' . print_r($formData, true));
 
         // loop through parent forms -- do we want to require an instance date for parent forms or not?
         if (!isset($tableModel[$formName]['parent_form'])) {
@@ -311,7 +311,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
             //print_dump($tableModel[$formName]);
 
             $parentRecord = $this->getChronRecord($formName, $instanceData, $instanceId, $eventId,
-              $tableModel[$formName]);
+              $tableModel[$formName], $recordId);
             //print_dump($parentRecord);
 
             // get the children; we assume only one level of children
@@ -325,7 +325,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
                     if ($instanceId == $childInstanceData[$parentInstanceVar])
                       $parentRecord['children'][]=
                         $this->getChronRecord($childFormName, $childInstanceData, $childInstanceId, $eventId,
-                          $tableModel[$childFormName], $instanceId);
+                          $tableModel[$childFormName], $recordId);
                   }
                 }
               }

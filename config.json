@@ -22,11 +22,21 @@
 	"enable-every-page-hooks-on-system-pages": false,
 
 	"links": {
-		"project": [
-
+		"system-settings": [
+			{
+				"key": "enable-system-debug-logging",
+				"name": "<b>Enable Debug Logging (system-wide)</b><i>(optional)</i> Requires installation and configuration of emLogger",
+				"required": false,
+				"type": "checkbox"
+			}
 		],
-		"control-center": [
-
+		"project": [
+			{
+				"key": "enable-project-debug-logging",
+				"name": "<b>Enable Debug Logging</b><br><i>(optional)</i> Requires installation and configuration of emLogger",
+				"required": false,
+				"type": "checkbox"
+			}
 		]
 	},
 
