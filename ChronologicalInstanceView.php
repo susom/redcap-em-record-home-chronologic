@@ -15,6 +15,11 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
   private $recordId;
 
   const INSTANCE_DESC = '@INSTANCESUMMARY';
+  const INSTANCE_LABEL = '@INSTANCELABEL';
+  const INSTANCE_FILTER = '@INSTANCESUMMARY_FILTER';
+  const INSTANCE_ORDER = '@INSTANCEORDER';
+
+
   const PRINCIPAL_DATE = '@PRINCIPAL_DATE';
   const ACTION_TAG = '@INSTANCETABLE';
   const ACTION_TAG_REF = '@INSTANCETABLE_REF';
@@ -23,7 +28,6 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
   {
     try {
       parent::__construct();
-
       if (isset($_GET['pid']) || isset($_POST['pid'])) {
         if (isset($_GET['pid'])) {
           $projectId = filter_var($_GET['pid'], FILTER_SANITIZE_NUMBER_INT);
@@ -52,7 +56,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
 
   private function showChronologicalPatientTable($tableData) {
     // build the display table
-    ?>
+      ?>
     <style type="text/css">
         td.details-control {
             background: url('../Resources/images/toggle-expand.png') no-repeat center center;
@@ -105,15 +109,15 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
         var repeatingFormsDiv = document.getElementById('repeating_forms_table_parent_title');
         var tableDivLabel = document.createElement("div");
         tableDivLabel.id='chrontable_display_name';
-        tableDivLabel.innerHTML="Chronological Patient Record <button class='ml-2 btn' id='toggleAllButton' " +
-          "></button>";
+        tableDivLabel.innerHTML="Chronological Patient Record ";
         repeatingFormsDiv.parentNode.insertBefore(tableDivLabel, repeatingFormsDiv);
         var tableDiv = document.createElement("div");
         repeatingFormsDiv.parentNode.insertBefore(tableDiv, repeatingFormsDiv);
 
         tableDiv.innerHTML='<table id="patient_record_table" class="table table-bordered ' +
           'table-condensed patient_record_table" cellspacing="0" style="width:100%;">' +
-          '<thead><tr><th style="width:5%;"></th><th style="width:10%;' +
+          '<thead><tr><th style="width:5%;"><button class="ml-2 btn" id="toggleAllButton" ' +
+        '></button></th><th style="width:10%;' +
           '">Date</th><th style="width:20%;">Type</th><th>Summary</th></tr></thead>' +
           '<tbody></tbody></table>';
 
@@ -214,6 +218,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
    * @return array
    */
   private function buildChronologicalTableModel() {
+
     $tableModel = array();
     $eventForms = $this->project->eventsForms;
     $eventIds = array_keys($this->project->eventInfo);
@@ -236,11 +241,33 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
             $fieldDetails['field_annotation'])) {
             // assign the instance date
             $tableModel[$form]['instance_date'] = $fieldName;
-          } else if (preg_match("/".self::INSTANCE_DESC."/",
+          }
+          if (preg_match("/".self::INSTANCE_DESC."/",
             $fieldDetails['field_annotation'])) {
             // assign the instance description meta
             $tableModel[$form]['instance_desc'][$fieldName] = $fieldDetails;
-          } else if ($fieldDetails['field_type']==='descriptive' &&
+          }
+          if (preg_match("/".self::INSTANCE_LABEL."/",
+              $fieldDetails['field_annotation'])) {
+              // assign the instance description meta
+              $tableModel[$form]['instance_label'][$fieldName] = $fieldDetails;
+          }
+          if (preg_match("/".self::INSTANCE_FILTER."/",
+              $fieldDetails['field_annotation'])) {
+              preg_match("/".self::INSTANCE_FILTER."='?\"?(\w+)'?\"?\s?/",
+                  $fieldDetails['field_annotation'], $matches);
+              $this->emDebug('instance_filter: '.print_r($matches, true));
+              $tableModel[$form]['instance_filter']['field_name']=$fieldName;
+              $tableModel[$form]['instance_filter']['value']=array_pop($matches);
+          }
+            if (preg_match("/".self::INSTANCE_ORDER."/",
+                $fieldDetails['field_annotation'])) {
+                preg_match("/".self::INSTANCE_ORDER."='?\"?(\w+)'?\"?\s?/",
+                    $fieldDetails['field_annotation'], $matches);
+                $this->emDebug('instance_order: '.print_r($matches, true));
+                $tableModel[$form]['instance_order']=array_pop($matches);
+            }
+          if ($fieldDetails['field_type']==='descriptive' &&
             preg_match("/".self::ACTION_TAG."='?((\w+_arm_\d+[a-z]?:)?\w+)'?\s?/",
               $fieldDetails['field_annotation'], $matches)
             && preg_match("/".self::ACTION_TAG_REF."='?((\w+_arm_\d+[a-z]?:)?\w+)'?\s?/",
@@ -298,50 +325,79 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
     $recordData = REDCap::getData('array', $recordId);
 
     // loops through all the events in the record
-    foreach ($recordData[$recordId]['repeat_instances'] as $eventId => $form) {
-      //print_dump($recordData[$recordId]['repeat_instances'][$eventId]);
+      $this->emDebug('get repeat instances from: '.print_r($recordData[$recordId], true));
+      if (!empty($recordData[$recordId]['repeat_instances'])) {
+          foreach ($recordData[$recordId]['repeat_instances'] as $eventId => $form) {
+              //print_dump($recordData[$recordId]['repeat_instances'][$eventId]);
 
-      //loop through all the forms in the event
-      foreach ($form as $formName => $formData) {
-          $this->emDebug('Form data ' . $formName . ': ' . print_r($formData, true));
+              //loop through all the forms in the event
+              foreach ($form as $formName => $formData) {
+                  $this->emDebug('Form data ' . $formName . ': ' . print_r($formData, true));
 
-        // loop through parent forms -- do we want to require an instance date for parent forms or not?
-        if (!isset($tableModel[$formName]['parent_form'])) {
-          //&& isset($tableModel[$formName]['instance_date'])) {
-          foreach ($formData as $instanceId => $instanceData) {
-            //print_dump($instanceData);
-            //print_dump($tableModel[$formName]);
+                  // loop through parent forms -- do we want to require an instance date for parent forms or not?
+                  $parents=[];
+                  if (!isset($tableModel[$formName]['parent_form'])) {
+                      //&& isset($tableModel[$formName]['instance_date'])) {
+                      foreach ($formData as $instanceId => $instanceData) {
 
-            $parentRecord = $this->getChronRecord($formName, $instanceData, $instanceId, $eventId,
-              $tableModel[$formName], $recordId);
-            //print_dump($parentRecord);
+                          $parentRecord = $this->getChronRecord($formName, $instanceData, $instanceId, $eventId,
+                              $tableModel[$formName], $recordId);
 
-            // get the children; we assume only one level of children
-            if ($tableModel[$formName]['children']) {
-              //print_dump($tableModel[$form_name]['children']);
-              $parentRecord['children'] = array();
-              foreach ($tableModel[$formName]['children'] as $childFormName => $parentInstanceVar) {
-                if ($recordData[$recordId]['repeat_instances'][$eventId][$childFormName]) {
-                  $childData = $recordData[$recordId]['repeat_instances'][$eventId][$childFormName];
-                  foreach ($childData as $childInstanceId => $childInstanceData) {
-                    if ($instanceId == $childInstanceData[$parentInstanceVar])
-                      $parentRecord['children'][]=
-                        $this->getChronRecord($childFormName, $childInstanceData, $childInstanceId, $eventId,
-                          $tableModel[$childFormName], $recordId);
+                          // get the children; we assume only one level of children
+                          if ($tableModel[$formName]['children']) {
+                              //print_dump($tableModel[$form_name]['children']);
+                              $parentRecord['children'] = array();
+                              foreach ($tableModel[$formName]['children'] as $childFormName => $parentInstanceVar) {
+                                  $children=[];
+                                  if ($recordData[$recordId]['repeat_instances'][$eventId][$childFormName]) {
+                                      $childData = $recordData[$recordId]['repeat_instances'][$eventId][$childFormName];
+                                      foreach ($childData as $childInstanceId => $childInstanceData) {
+                                          if ($instanceId == $childInstanceData[$parentInstanceVar]) {
+                                            $childRecord = $this->getChronRecord($childFormName, $childInstanceData, $childInstanceId, $eventId,
+                                                $tableModel[$childFormName], $recordId);
+                                            if ($childRecord !== null) {
+                                                $children[] =$childRecord;
+                                            }
+
+                                          }
+
+                                      }
+                                  }
+                                  // sort the children
+                                  usort($children, array($this, "recordCmp"));
+                                  $this->emDebug('sort children: '.print_r($children, true));
+                                  $this->emDebug("tableModel[$childFormName][instance_order]: ".$tableModel[$childFormName]['instance_order']);
+
+                                  if (isset($tableModel[$childFormName]['instance_order'])
+                                      && stripos($tableModel[$childFormName]['instance_order'], 'desc')!==false) {
+                                      $children=array_reverse($children);
+                                      $this->emDebug('reverse children: '.print_r($children, true));
+                                  }
+                                  $parentRecord['children'] =array_merge($parentRecord['children'], $children);
+                              }
+                              // sort the children
+                              //usort($parentRecord['children'], array($this, "recordCmp"));
+                          }
+                          $parents[] = $parentRecord;
+                      }
                   }
-                }
-              }
-              // sort the children
-              usort($parentRecord['children'], array($this, "recordCmp"));
-            }
-            $tableData[]=$parentRecord;
-          }
-        }
-      }//end foreach form
-    }// end foreach event
-    // sort the tableData
-    usort($tableData, array($this, "recordCmp"));
-    return $tableData;
+                  // sort the tableData
+                  usort($parents, array($this, "recordCmp"));
+                  $this->emDebug('sort $parents: '.print_r($parents, true));
+                  $this->emDebug("tableModel[$formName][instance_order]: ".$tableModel[$formName]['instance_order']);
+
+                  if (isset($tableModel[$formName]['instance_order'])
+                      && stripos($tableModel[$formName]['instance_order'], 'desc')!==false) {
+                      $parents= array_reverse($parents);
+                      $this->emDebug('reverse $tableData: '.print_r($parents, true));
+
+                  }
+                  $tableData = array_merge($tableData, $parents);
+              }//end foreach form
+          }// end foreach event
+
+          return $tableData;
+      }
   }
 
   private function recordCmp($record1, $record2) {
@@ -372,12 +428,23 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
    * @return array
    */
   private function getChronRecord($formName, $instanceData, $instanceId, $eventId, $formModel, $parentId = null) {
+    if (isset($formModel['instance_filter'])) {
+      $this->emDebug('getChronRecord realval='.$instanceData[$formModel['instance_filter']['field_name']]
+          .' filter val='. $formModel['instance_filter']['value']);
+      if ($instanceData[$formModel['instance_filter']['field_name']] !=
+          $formModel['instance_filter']['value']) {
+        return null;
+      }
+    }
     $record = array();
     $record['form'] = $formName;
     $record['instance_id'] = $instanceId;
     if ($formModel['instance_date']) {
       $record['instance_date'] =
         $instanceData[$formModel['instance_date']];
+    } else if ($formModel['instance_label']) {
+        $record['instance_id'] = $this->getInstanceDataDescription($instanceData,
+            $formModel['instance_label']);
     }
     if (!empty($formModel['instance_desc'])) {
       $record['description'] = $this->getInstanceDataDescription($instanceData,
