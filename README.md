@@ -45,3 +45,9 @@ see.
 the record summary table.   For example, if the field 'status' is tagged with **@INSTANCESUMMARY_FILTER=1**, then only 
 instances where the value of status=1 will be displayed in the summary table.  
 
+
+### Development
+
+* E2E tests (Playwright, local redcap-docker-compose): see [e2e/README.md](e2e/README.md).
+* 2026-11-24: record ID handling, bounded data load and output escaping; notes, evidence and test steps in
+  [docs/2026-11-24-record-id-whole-project-load.md](docs/2026-11-24-record-id-whole-project-load.md).
