@@ -2,9 +2,6 @@
 namespace Stanford\ChronologicalInstanceView;
 
 require_once "emLoggerTrait.php";
-ini_set("memory_limit", "-1");
-ini_set('max_execution_time', 0);
-set_time_limit(0);
 
 use REDCap;
 
@@ -24,33 +21,27 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
   const ACTION_TAG = '@INSTANCETABLE';
   const ACTION_TAG_REF = '@INSTANCETABLE_REF';
 
-  public function __construct()
-  {
-    try {
-      parent::__construct();
-      if (isset($_GET['pid']) || isset($_POST['pid'])) {
-        if (isset($_GET['pid'])) {
-          $projectId = filter_var($_GET['pid'], FILTER_SANITIZE_NUMBER_INT);
-        } elseif (isset($_POST['pid'])) {
-          $projectId = filter_var($_POST['pid'], FILTER_SANITIZE_NUMBER_INT);
-        }
-        $this->projectId = $projectId;
-        $this->project = new \Project($this->getProjectId());
-      }
-    } catch (\Exception $exception) {
-      echo $exception->getMessage();
-    } catch (\LogicException $exception) {
-      echo $exception->getMessage();
-    }
-  }
-
   public function redcap_every_page_top($project_id) {
-    if (PAGE == 'DataEntry/record_home.php' && isset($_GET['id'])) {
-      $this->recordId = filter_var($_GET['id'], FILTER_SANITIZE_NUMBER_INT);
+    if (PAGE == 'DataEntry/record_home.php' && isset($_GET['id']) && !empty($project_id)) {
+      // Set up here, not in a constructor: the module class is instantiated on many pages
+      // (e.g. to draw its left-menu links), and only Record Home needs the project.
+      $this->projectId = $project_id;
+      $this->project = new \Project($project_id);
+      // Use the record this page shows, read the way REDCap's Record Home reads it
+      // (DataEntry::renderRecordHomePage, plus the double-data-entry suffix). Never reduce it to its
+      // digits: "ABC" became "", and REDCap::getData() with an empty record loads the WHOLE project.
+      $recordId = is_string($_GET['id']) ? addDDEending(strip_tags(label_decode($_GET['id']))) : '';
+      if (trim($recordId) === '') {
+        return;
+      }
+      $this->recordId = $recordId;
       //Loop through instruments data dictionary to get tagged fields
       $tableModel = $this->buildChronologicalTableModel();
       $tableData = $this->populateChronologicalTableData($tableModel);
-      $this->showChronologicalPatientTable($tableData);
+      // No repeating data: render nothing (there is no repeating-forms section to attach to)
+      if (!empty($tableData)) {
+        $this->showChronologicalPatientTable($tableData);
+      }
     }
   }
 
@@ -80,20 +71,23 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
             text-align:left;font-size:15px;border-bottom:1px dashed #ccc;
             }
         #chrontable_display_name>div { display:inline-block;vertical-align:top; }
+        /* keep dates on one line (they wrapped at the hyphen on phones) */
+        #patient_record_table .chrontable-date { white-space: nowrap; }
     </style>
     <script type="text/javascript">
 
       function format ( d ) {
         // `d` is the original data object for the row
         if (d.children != null) {
-          let dtable = '<table cellpadding="5" cellspacing="0" border="0" style="margin-left:5%;width:100%;">' +
+          // 5% indent + 95% width: at 100% the child rows overflowed the table (and the page)
+          let dtable = '<table cellpadding="5" cellspacing="0" border="0" style="margin-left:5%;width:95%;">' +
             '<tbody>';
           for (let i=0; i< d.children.length; i++) {
             if (d.children[i]['instance_date'] != null) {
-              dtable += '<tr><td style="width:10%;"><a href="' + d.children[i].record_url + '">' + d.children[i]
+              dtable += '<tr><td class="chrontable-date" style="width:10%;"><a href="' + d.children[i].record_url + '">' + d.children[i]
                 .instance_date+'</a></td>';
             } else {
-              dtable += '<tr><td style="width:10%;"><a href="' + d.children[i].record_url + '">' + d.children[i]
+              dtable += '<tr><td class="chrontable-date" style="width:10%;"><a href="' + d.children[i].record_url + '">' + d.children[i]
                 .instance_id +'</a></td>';
             }
             dtable += '<td style="width:20%">' +d.children[i].form+'</td>';
@@ -107,6 +101,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
       }
       $(document).ready(function() {
         var repeatingFormsDiv = document.getElementById('repeating_forms_table_parent_title');
+        if (!repeatingFormsDiv) return;
         var tableDivLabel = document.createElement("div");
         tableDivLabel.id='chrontable_display_name';
         tableDivLabel.innerHTML="Chronological Patient Record ";
@@ -122,14 +117,18 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
           '<tbody></tbody></table>';
 
         var table = $('#patient_record_table').DataTable( {
-          "data":<?php echo json_encode($tableData)?>,
+          // Escaped once here: DataTables and format() insert these strings as HTML.
+          // (Static call: this module has no framework-version, and framework v1 does not
+          // forward $this->escape().)
+          "data":<?php echo json_encode(\ExternalModules\ExternalModules::escape($tableData), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>,
           "columns": [
             {
               "orderable":      false,
               "data":           null,
               "defaultContent": ''
             },
-            { "data": function (data, type, dataToSet) {
+            { "className": "chrontable-date",
+              "data": function (data, type, dataToSet) {
               if (data.instance_date != null) {
                 return '<a href="' + data.record_url + '">' + data.instance_date + '</a>';
               } else {
@@ -234,7 +233,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
         foreach ($instrumentFields as $fieldName => $fieldDetails) {
           $matches = array();
           $matches2 = array();
-          if ($tableModel[$form]==null) {
+          if (!isset($tableModel[$form])) {
             $tableModel[$form] = array();
           }
           if (preg_match("/".self::PRINCIPAL_DATE."/",
@@ -256,7 +255,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
               $fieldDetails['field_annotation'])) {
               preg_match("/".self::INSTANCE_FILTER."='?\"?(\w+)'?\"?\s?/",
                   $fieldDetails['field_annotation'], $matches);
-              $this->emDebug('instance_filter: '.print_r($matches, true));
+              $this->emDebug('instance_filter', $matches);
               $tableModel[$form]['instance_filter']['field_name']=$fieldName;
               $tableModel[$form]['instance_filter']['value']=array_pop($matches);
           }
@@ -264,7 +263,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
                 $fieldDetails['field_annotation'])) {
                 preg_match("/".self::INSTANCE_ORDER."='?\"?(\w+)'?\"?\s?/",
                     $fieldDetails['field_annotation'], $matches);
-                $this->emDebug('instance_order: '.print_r($matches, true));
+                $this->emDebug('instance_order', $matches);
                 $tableModel[$form]['instance_order']=array_pop($matches);
             }
           if ($fieldDetails['field_type']==='descriptive' &&
@@ -275,7 +274,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
             // $matches is the child form name; $matches2 is the parent instance var
 
             // assign the parent instance in both parent and child
-            if ($tableModel[$form]['children'] == null) {
+            if (!isset($tableModel[$form]['children'])) {
               $tableModel[$form]['children'] = array();
             }
             $childFormName = array_pop($matches);
@@ -283,7 +282,7 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
             $tableModel[$form]['children'][$childFormName] = $parentInstanceVar;
 
             // assume there is only one parent for child
-            if ($tableModel[$childFormName] == null) {
+            if (!isset($tableModel[$childFormName])) {
               $tableModel[$childFormName] = array();
             }
             $tableModel[$childFormName]['parent_instance'] = $parentInstanceVar;
@@ -296,9 +295,43 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
         }
       }
     }
-    $this->emDebug('Table model: '. print_r($tableModel, true));
+    $this->emDebug('Table model', $tableModel);
     return $tableModel;
 
+  }
+
+  /**
+   * The fields populateChronologicalTableData() reads: the record ID, every tagged field, the
+   * parent-instance fields, and each form's status field, so every repeating form still returns
+   * its instances when none of its fields are tagged (those rows use the default description).
+   * REDCap stores <form>_complete whenever an instance is saved or imported (0 when not given), so
+   * only data written straight to the data table, bypassing REDCap, could lack it.
+   * @param $tableModel
+   * @return array
+   */
+  private function getTableFields($tableModel) {
+    $fields = array(REDCap::getRecordIdField());
+    foreach (array_keys(REDCap::getInstrumentNames()) as $formName) {
+      $fields[] = $formName . '_complete';
+    }
+    foreach ($tableModel as $formModel) {
+      if (!empty($formModel['instance_date'])) {
+        $fields[] = $formModel['instance_date'];
+      }
+      foreach (array('instance_desc', 'instance_label') as $key) {
+        if (!empty($formModel[$key])) {
+          $fields = array_merge($fields, array_keys($formModel[$key]));
+        }
+      }
+      if (!empty($formModel['instance_filter']['field_name'])) {
+        $fields[] = $formModel['instance_filter']['field_name'];
+      }
+      if (!empty($formModel['parent_instance'])) {
+        $fields[] = $formModel['parent_instance'];
+      }
+    }
+    // Keep real field names only (an @INSTANCETABLE_REF can carry an event prefix).
+    return array_values(array_intersect(array_unique($fields), REDCap::getFieldNames()));
   }
 
   /* @param $tableModel
@@ -320,41 +353,52 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
   private function populateChronologicalTableData($tableModel) {
     $recordId = $this->recordId;
 
-    //Get all the data that belongs to this record and sort it according to chronological view
+    //Get this record's data (only the fields the table uses) and sort it according to chronological view.
+    //Pass the record as an array: REDCap::getData() treats an empty record as ALL records.
     $tableData = array();
-    $recordData = REDCap::getData('array', $recordId);
+    $recordData = REDCap::getData(array(
+      'project_id' => $this->projectId,
+      'return_format' => 'array',
+      'records' => array($recordId),
+      'fields' => $this->getTableFields($tableModel),
+    ));
 
     // loops through all the events in the record
-      $this->emDebug('get repeat instances from: '.print_r($recordData[$recordId], true));
+      $this->emDebug('repeat instances: ' . (empty($recordData[$recordId]['repeat_instances']) ? 'none' : count($recordData[$recordId]['repeat_instances']) . ' event(s)'));
       if (!empty($recordData[$recordId]['repeat_instances'])) {
           foreach ($recordData[$recordId]['repeat_instances'] as $eventId => $form) {
               //print_dump($recordData[$recordId]['repeat_instances'][$eventId]);
 
               //loop through all the forms in the event
               foreach ($form as $formName => $formData) {
-                  $this->emDebug('Form data ' . $formName . ': ' . print_r($formData, true));
+                  $this->emDebug('Form ' . $formName . ': ' . count($formData) . ' instance(s)');
+                  $formModel = $tableModel[$formName] ?? array();
 
                   // loop through parent forms -- do we want to require an instance date for parent forms or not?
                   $parents=[];
-                  if (!isset($tableModel[$formName]['parent_form'])) {
+                  if (!isset($formModel['parent_form'])) {
                       //&& isset($tableModel[$formName]['instance_date'])) {
                       foreach ($formData as $instanceId => $instanceData) {
 
                           $parentRecord = $this->getChronRecord($formName, $instanceData, $instanceId, $eventId,
-                              $tableModel[$formName], $recordId);
+                              $formModel, $recordId);
+                          // @INSTANCESUMMARY_FILTER excluded this instance (as it does for children)
+                          if ($parentRecord === null) {
+                              continue;
+                          }
 
                           // get the children; we assume only one level of children
-                          if ($tableModel[$formName]['children']) {
+                          if (!empty($formModel['children'])) {
                               //print_dump($tableModel[$form_name]['children']);
                               $parentRecord['children'] = array();
-                              foreach ($tableModel[$formName]['children'] as $childFormName => $parentInstanceVar) {
+                              foreach ($formModel['children'] as $childFormName => $parentInstanceVar) {
                                   $children=[];
-                                  if ($recordData[$recordId]['repeat_instances'][$eventId][$childFormName]) {
+                                  if (!empty($recordData[$recordId]['repeat_instances'][$eventId][$childFormName])) {
                                       $childData = $recordData[$recordId]['repeat_instances'][$eventId][$childFormName];
                                       foreach ($childData as $childInstanceId => $childInstanceData) {
-                                          if ($instanceId == $childInstanceData[$parentInstanceVar]) {
+                                          if ($instanceId == ($childInstanceData[$parentInstanceVar] ?? null)) {
                                             $childRecord = $this->getChronRecord($childFormName, $childInstanceData, $childInstanceId, $eventId,
-                                                $tableModel[$childFormName], $recordId);
+                                                $tableModel[$childFormName] ?? array(), $recordId);
                                             if ($childRecord !== null) {
                                                 $children[] =$childRecord;
                                             }
@@ -365,13 +409,12 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
                                   }
                                   // sort the children
                                   usort($children, array($this, "recordCmp"));
-                                  $this->emDebug('sort children: '.print_r($children, true));
-                                  $this->emDebug("tableModel[$childFormName][instance_order]: ".$tableModel[$childFormName]['instance_order']);
+                                  $childOrder = $tableModel[$childFormName]['instance_order'] ?? null;
+                                  $this->emDebug("children of $formName: " . count($children) . ", $childFormName instance_order: " . $childOrder);
 
-                                  if (isset($tableModel[$childFormName]['instance_order'])
-                                      && stripos($tableModel[$childFormName]['instance_order'], 'desc')!==false) {
+                                  if (isset($childOrder)
+                                      && stripos($childOrder, 'desc')!==false) {
                                       $children=array_reverse($children);
-                                      $this->emDebug('reverse children: '.print_r($children, true));
                                   }
                                   $parentRecord['children'] =array_merge($parentRecord['children'], $children);
                               }
@@ -383,25 +426,23 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
                   }
                   // sort the tableData
                   usort($parents, array($this, "recordCmp"));
-                  $this->emDebug('sort $parents: '.print_r($parents, true));
-                  $this->emDebug("tableModel[$formName][instance_order]: ".$tableModel[$formName]['instance_order']);
+                  $parentOrder = $formModel['instance_order'] ?? null;
+                  $this->emDebug("rows for $formName: " . count($parents) . ", instance_order: " . $parentOrder);
 
-                  if (isset($tableModel[$formName]['instance_order'])
-                      && stripos($tableModel[$formName]['instance_order'], 'desc')!==false) {
+                  if (isset($parentOrder)
+                      && stripos($parentOrder, 'desc')!==false) {
                       $parents= array_reverse($parents);
-                      $this->emDebug('reverse $tableData: '.print_r($parents, true));
 
                   }
                   $tableData = array_merge($tableData, $parents);
               }//end foreach form
           }// end foreach event
-
-          return $tableData;
       }
+      return $tableData;
   }
 
   private function recordCmp($record1, $record2) {
-    if ($record1['instance_date'] && $record2['instance_date']) {
+    if (($record1['instance_date'] ?? null) && ($record2['instance_date'] ?? null)) {
       if ($record1['instance_date'] === $record2['instance_date']) return 0;
       return ($record1['instance_date'] < $record2['instance_date']) ? -1 : 1;
     }
@@ -412,10 +453,11 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
     if (isset($record2['instance_date'])) {
       return 1;
     }
-    if ($record1['instance_id'] && $record2['instance_id']) {
+    if (($record1['instance_id'] ?? null) && ($record2['instance_id'] ?? null)) {
       if ($record1['instance_id'] === $record2['instance_id']) return 0;
       return ($record1['instance_id'] < $record2['instance_id']) ? -1 : 1;
     }
+    return 0;
   }
 
   /**
@@ -429,9 +471,10 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
    */
   private function getChronRecord($formName, $instanceData, $instanceId, $eventId, $formModel, $parentId = null) {
     if (isset($formModel['instance_filter'])) {
-      $this->emDebug('getChronRecord realval='.$instanceData[$formModel['instance_filter']['field_name']]
+      // field name and filter value only: never log record values
+      $this->emDebug('getChronRecord filter field='.$formModel['instance_filter']['field_name']
           .' filter val='. $formModel['instance_filter']['value']);
-      if ($instanceData[$formModel['instance_filter']['field_name']] !=
+      if (($instanceData[$formModel['instance_filter']['field_name']] ?? null) !=
           $formModel['instance_filter']['value']) {
         return null;
       }
@@ -439,10 +482,10 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
     $record = array();
     $record['form'] = $formName;
     $record['instance_id'] = $instanceId;
-    if ($formModel['instance_date']) {
+    if (!empty($formModel['instance_date'])) {
       $record['instance_date'] =
-        $instanceData[$formModel['instance_date']];
-    } else if ($formModel['instance_label']) {
+        $instanceData[$formModel['instance_date']] ?? null;
+    } else if (!empty($formModel['instance_label'])) {
         $record['instance_id'] = $this->getInstanceDataDescription($instanceData,
             $formModel['instance_label']);
     }
@@ -468,29 +511,40 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
     // translate form data into user readable format
     $desc = array();
       foreach ($formModel as $fieldName => $fieldMeta) {
-        if ($instanceData[$fieldName] !== '') {
+        $value = $instanceData[$fieldName] ?? '';
+        if ($value !== '') {
           if ($fieldMeta['select_choices_or_calculations'] !== '') {
             $options = explode(' | ', $fieldMeta['select_choices_or_calculations']);
             foreach ($options as $option) {
               $keyvalue = explode(', ', $option);
               if ($fieldMeta['field_type'] == 'checkbox') {
-                foreach ($instanceData[$fieldName] as $k => $v) {
+                foreach ((is_array($value) ? $value : array()) as $k => $v) {
                   //checkbox is checked
                   if ($keyvalue[0] == $k && $v == "1") {
-                    $desc[]= $keyvalue[1];
+                    $desc[]= $this->plainLabel($keyvalue[1] ?? '');
                     break;
                   }
                 }
-              } else if ($instanceData[$fieldName] === $keyvalue[0]) {
-                $desc[] = $keyvalue[1];
+              } else if ($value === $keyvalue[0]) {
+                $desc[] = $this->plainLabel($keyvalue[1] ?? '');
               }
             }
           } else {
-            $desc[] = $instanceData[$fieldName];
+            $desc[] = $value;
           }
       }
     }
     return implode(', ', $desc);
+  }
+
+  /**
+   * A choice label as plain text. Labels may hold HTML formatting and entities; the table shows
+   * text (every value is escaped before rendering), so drop the tags and decode the entities.
+   * @param string $label
+   * @return string
+   */
+  private function plainLabel($label) {
+    return strip_tags(label_decode($label));
   }
 
   /**
@@ -502,12 +556,13 @@ class ChronologicalInstanceView extends \ExternalModules\AbstractExternalModule 
    * */
   private function getRecordURL($instanceId, $eventId, $formName, $parentId = null)
   {
-    $projectId = $this->projectId;
-    if ($parentId == null) {
-      return APP_PATH_WEBROOT . "DataEntry/index.php?pid=$projectId&id=$instanceId&event_id=$eventId&page=$formName";
-    } else {
-      return APP_PATH_WEBROOT . "DataEntry/index.php?pid=$projectId&id=$parentId&event_id=$eventId&page=$formName&instance=$instanceId";
+    // The record name is user data (letters, spaces, ...): URL-encode every parameter.
+    $params = array('pid' => $this->projectId, 'id' => $instanceId, 'event_id' => $eventId, 'page' => $formName);
+    if ($parentId !== null && $parentId !== '') {
+      $params['id'] = $parentId;
+      $params['instance'] = $instanceId;
     }
+    return APP_PATH_WEBROOT . "DataEntry/index.php?" . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
 
   }
 
